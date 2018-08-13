@@ -1,29 +1,29 @@
-from parcels import FieldSet, Field, ParticleSet, JITParticle, ErrorCode, AdvectionRK4, BrownianMotion2D
+from parcels import (FieldSet, Field, ParticleSet, JITParticle, ErrorCode,
+                     AdvectionRK4, BrownianMotion2D, Variable)
 from datetime import timedelta as delta
 from glob import glob
+import math
 import numpy as np
 import xlrd
 
 
 def set_fields():
-    ofesufiles = sorted(glob('/Volumes/data01/OFESdata/OFES_0.1_HIND/allveldata/nest_1_200[7-9]*u.nc'))
-    dimensions = {'lat': 'Latitude', 'lon': 'Longitude', 'time': 'Time'}
+    datestr = '201[0-2]'
+    hycomfiles = sorted(glob('/Volumes/data01/HYCOMdata/GLBu0.08_expt_19.1_surf/hycom_GLBu0.08_191_%s*' % datestr))
+    dimensions = {'lat': 'lat', 'lon': 'lon', 'time': 'time'}
+    uhycom = Field.from_netcdf(hycomfiles, 'water_u', dimensions, fieldtype='U')
+    vhycom = Field.from_netcdf(hycomfiles, 'water_v', dimensions, fieldtype='V')
+    uhycom.vmin = -99.
+    uhycom.set_scaling_factor(0.001)
+    vhycom.set_scaling_factor(0.001)
+    vhycom.vmin = -99.
 
-    uofes = Field.from_netcdf(ofesufiles, 'zu', dimensions, fieldtype='U')
-
-    ofesvfiles = [f.replace('u.nc', 'v.nc') for f in ofesufiles]
-    vofes = Field.from_netcdf(ofesvfiles, 'zv', dimensions, fieldtype='V')
-
-    stokesfiles = sorted(glob('/Volumes/data01/WaveWatch3data/WW3-GLOB-30M_200[7-9]*'))
+    stokesfiles = sorted(glob('/Volumes/data01/WaveWatch3data/WW3-GLOB-30M_%s*' % datestr))
     dimensions = {'lat': 'latitude', 'lon': 'longitude', 'time': 'time'}
     uuss = Field.from_netcdf(stokesfiles, 'uuss', dimensions, fieldtype='U')
     vuss = Field.from_netcdf(stokesfiles, 'vuss', dimensions, fieldtype='V')
 
-    # landpfiles = sorted(glob('/Volumes/data01/OFESdata/OFES_auxiliaryfiles/boundary_velocities.nc'))
-    # uland = Field.from_netcdf(landpfiles, 'MaskUvel', dimensions, allow_time_extrapolation=True, fieldtype='U')
-    # vland = Field.from_netcdf(landpfiles, 'MaskVvel', dimensions, allow_time_extrapolation=True, fieldtype='V')
-    # fieldset = FieldSet(U=[uofes, uuss, uland], V=[vofes, vuss, vland])
-    fieldset = FieldSet(U=[uofes, uuss], V=[vofes, vuss])
+    fieldset = FieldSet(U=[uhycom, uuss], V=[vhycom, vuss])
 
     fieldset.add_periodic_halo(zonal=True, meridional=False, halosize=5)
     return fieldset
@@ -40,7 +40,14 @@ def OutOfBounds(particle, fieldset, time, dt):
     particle.delete()
 
 
+def Age(particle, fieldset, time, dt):
+    particle.age = particle.age + math.fabs(dt)
+    if particle.age > fieldset.maxage:
+        particle.delete()
+
+
 fieldset = set_fields()
+fieldset.add_constant('maxage', 730.*86400)
 
 size2D = (fieldset.U[0].grid.ydim, fieldset.U[0].grid.xdim)
 fieldset.add_field(Field('Kh_zonal', data=10 * np.ones(size2D), lon=fieldset.U[0].grid.lon, lat=fieldset.U[0].grid.lat,
@@ -48,20 +55,23 @@ fieldset.add_field(Field('Kh_zonal', data=10 * np.ones(size2D), lon=fieldset.U[0
 fieldset.add_field(Field('Kh_meridional', data=10 * np.ones(size2D), lon=fieldset.U[0].grid.lon, lat=fieldset.U[0].grid.lat,
                          mesh='spherical', allow_time_extrapolation=True))
 
-nperloc = 100
-rundays = 729
-
 book = xlrd.open_workbook("pumicesources.xlsx")
 sh = book.sheet_by_index(0)
 lons = [sh.cell_value(rowx=rx, colx=3) for rx in range(sh.nrows)]
 lats = [sh.cell_value(rowx=rx, colx=2) for rx in range(sh.nrows)]
 lons = [ln if ln > 0 else ln + 360 for ln in lons]
+times = fieldset.U[0].time[0]+np.arange(0, 365*86400, 86400*5)
 
-pset = ParticleSet.from_list(fieldset=fieldset, pclass=JITParticle, lon=np.tile(lons, [nperloc]),
-                             lat=np.tile(lats, [nperloc]))
 
-ofile = pset.ParticleFile(name='pumice_wstokes', outputdt=delta(days=5))
+class PumiceParticle(JITParticle):
+    age = Variable('age', dtype=np.float32, initial=0.)
 
-kernels = pset.Kernel(WrapLon) + AdvectionRK4 + pset.Kernel(BrownianMotion2D)
-pset.execute(kernels, runtime=delta(days=rundays), dt=delta(hours=1),
+
+pset = ParticleSet.from_list(fieldset=fieldset, pclass=PumiceParticle, lon=np.tile(lons, [len(times)]),
+                             lat=np.tile(lats, [len(times)]), time=np.repeat(times, len(lons)))
+
+ofile = pset.ParticleFile(name='pumice_wstokes_hycom_delayedtime', outputdt=delta(days=5))
+
+kernels = pset.Kernel(WrapLon) + AdvectionRK4 + BrownianMotion2D + Age
+pset.execute(kernels, endtime=fieldset.U[0].time[-1], dt=delta(hours=1),
              output_file=ofile, recovery={ErrorCode.ErrorOutOfBounds: OutOfBounds})
