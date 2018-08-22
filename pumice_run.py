@@ -12,7 +12,7 @@ def set_fields():
     hycomfiles = sorted(glob('/Volumes/data01/HYCOMdata/GLBu0.08_expt_19.1_surf/hycom_GLBu0.08_191_%s*' % datestr))
     dimensions = {'lat': 'lat', 'lon': 'lon', 'time': 'time'}
     uhycom = Field.from_netcdf(hycomfiles, 'water_u', dimensions, fieldtype='U')
-    vhycom = Field.from_netcdf(hycomfiles, 'water_v', dimensions, fieldtype='V', grid=uhycom.grid, timeFiles=uhycom.timeFiles)
+    vhycom = Field.from_netcdf(hycomfiles, 'water_v', dimensions, fieldtype='V', grid=uhycom.grid, dataFiles=uhycom.dataFiles)
     uhycom.vmin = -99.
     uhycom.set_scaling_factor(0.001)
     vhycom.set_scaling_factor(0.001)
@@ -21,7 +21,7 @@ def set_fields():
     stokesfiles = sorted(glob('/Volumes/data01/WaveWatch3data/WW3-GLOB-30M_%s*' % datestr))
     dimensions = {'lat': 'latitude', 'lon': 'longitude', 'time': 'time'}
     uuss = Field.from_netcdf(stokesfiles, 'uuss', dimensions, fieldtype='U')
-    vuss = Field.from_netcdf(stokesfiles, 'vuss', dimensions, fieldtype='V', grid=uuss.grid, timeFiles=uuss.timeFiles)
+    vuss = Field.from_netcdf(stokesfiles, 'vuss', dimensions, fieldtype='V', grid=uuss.grid, dataFiles=uuss.dataFiles)
 
     fieldset = FieldSet(U=[uhycom, uuss], V=[vhycom, vuss])
 
