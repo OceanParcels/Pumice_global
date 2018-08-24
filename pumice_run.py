@@ -23,7 +23,14 @@ def set_fields():
     uuss = Field.from_netcdf(stokesfiles, 'uuss', dimensions, fieldtype='U')
     vuss = Field.from_netcdf(stokesfiles, 'vuss', dimensions, fieldtype='V', grid=uuss.grid, dataFiles=uuss.dataFiles)
 
-    fieldset = FieldSet(U=[uhycom, uuss], V=[vhycom, vuss])
+    windfiles = sorted(glob('/Users/erik/Desktop/WaveWatchWind/WaveWatchWind*.nc'))
+    dimensions = {'lat': 'latitude', 'lon': 'longitude', 'time': 'time'}
+    uwnd = Field.from_netcdf(windfiles, 'uwnd', dimensions, fieldtype='U')
+    vwnd = Field.from_netcdf(windfiles, 'vwnd', dimensions, fieldtype='V', grid=uwnd.grid, dataFiles=uwnd.dataFiles)
+    uwnd.set_scaling_factor(0.01)
+    vwnd.set_scaling_factor(0.01)
+
+    fieldset = FieldSet(U=[uhycom, uuss, uwnd], V=[vhycom, vuss, vwnd])
 
     fieldset.add_periodic_halo(zonal=True, meridional=False, halosize=5)
     return fieldset
@@ -70,7 +77,7 @@ class PumiceParticle(JITParticle):
 pset = ParticleSet.from_list(fieldset=fieldset, pclass=PumiceParticle, lon=np.tile(lons, [len(times)]),
                              lat=np.tile(lats, [len(times)]), time=np.repeat(times, len(lons)))
 
-ofile = pset.ParticleFile(name='pumice_wstokes_hycom_delayedtime', outputdt=delta(days=5))
+ofile = pset.ParticleFile(name='pumice_wind1pct_stokes_hycom_delayedtime', outputdt=delta(days=5))
 
 kernels = pset.Kernel(WrapLon) + AdvectionRK4 + BrownianMotion2D + Age
 pset.execute(kernels, endtime=fieldset.U[0].time[-1], dt=delta(hours=1),
