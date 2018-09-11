@@ -30,7 +30,7 @@ def set_fields():
     uwnd.set_scaling_factor(0.01)
     vwnd.set_scaling_factor(0.01)
 
-    fieldset = FieldSet(U=[uhycom, uuss, uwnd], V=[vhycom, vuss, vwnd])
+    fieldset = FieldSet(U=uhycom+uuss+uwnd, V=vhycom+vuss+vwnd)
 
     fieldset.add_periodic_halo(zonal=True, meridional=False, halosize=5)
     return fieldset
